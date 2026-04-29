@@ -1,31 +1,24 @@
 import { useState, useRef } from 'react'
 import PdfViewer from './components/PdfViewer'
-import ProblemPanel from './components/ProblemPanel'
 
 export default function App() {
   const [pdfFile, setPdfFile] = useState<File | null>(null)
-  const [problem, setProblem] = useState('')
-  const [pdfScale, setPdfScale] = useState(1.2)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file && file.type === 'application/pdf') {
-      setPdfFile(file)
-    }
+    if (file && file.type === 'application/pdf') setPdfFile(file)
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
-    if (file && file.type === 'application/pdf') {
-      setPdfFile(file)
-    }
+    if (file && file.type === 'application/pdf') setPdfFile(file)
   }
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-      {/* Top nav */}
+      {/* Header */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 z-10">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center">
@@ -39,30 +32,6 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Zoom controls */}
-          {pdfFile && (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setPdfScale((s) => Math.max(0.5, +(s - 0.1).toFixed(1)))}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-base transition-colors"
-                aria-label="Zoom out"
-              >
-                −
-              </button>
-              <span className="text-xs text-slate-500 w-10 text-center tabular-nums">
-                {Math.round(pdfScale * 100)}%
-              </span>
-              <button
-                onClick={() => setPdfScale((s) => Math.min(3, +(s + 0.1).toFixed(1)))}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-base transition-colors"
-                aria-label="Zoom in"
-              >
-                +
-              </button>
-            </div>
-          )}
-
-          {/* Upload button */}
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -82,25 +51,17 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main split view */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left panel — problem input */}
-        <div className="w-80 shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
-          <ProblemPanel problem={problem} onProblemChange={setProblem} />
-        </div>
-
-        {/* Right panel — PDF viewer */}
-        <div
-          className="flex-1 flex flex-col overflow-hidden"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-        >
-          {!pdfFile ? (
-            <DropZone onClick={() => fileInputRef.current?.click()} />
-          ) : (
-            <PdfViewer file={pdfFile} scale={pdfScale} />
-          )}
-        </div>
+      {/* PDF viewer — full width */}
+      <div
+        className="flex-1 overflow-hidden"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+      >
+        {!pdfFile ? (
+          <DropZone onClick={() => fileInputRef.current?.click()} />
+        ) : (
+            <PdfViewer file={pdfFile} />
+        )}
       </div>
     </div>
   )
@@ -111,10 +72,8 @@ function DropZone({ onClick }: { onClick: () => void }) {
 
   return (
     <div
-      className={`flex-1 flex flex-col items-center justify-center cursor-pointer transition-colors ${
-        isDragOver
-          ? 'bg-indigo-50 dark:bg-indigo-950/30'
-          : 'bg-slate-50 dark:bg-slate-950'
+      className={`h-full flex flex-col items-center justify-center cursor-pointer transition-colors ${
+        isDragOver ? 'bg-indigo-50 dark:bg-indigo-950/30' : 'bg-slate-50 dark:bg-slate-950'
       }`}
       onClick={onClick}
       onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
@@ -122,9 +81,7 @@ function DropZone({ onClick }: { onClick: () => void }) {
       onDrop={(e) => { e.preventDefault(); setIsDragOver(false) }}
     >
       <div className={`flex flex-col items-center gap-4 p-10 rounded-2xl border-2 border-dashed transition-colors ${
-        isDragOver
-          ? 'border-indigo-400 dark:border-indigo-500'
-          : 'border-slate-300 dark:border-slate-600'
+        isDragOver ? 'border-indigo-400 dark:border-indigo-500' : 'border-slate-300 dark:border-slate-600'
       }`}>
         <div className={`w-14 h-14 rounded-xl flex items-center justify-center transition-colors ${
           isDragOver ? 'bg-indigo-100 dark:bg-indigo-900/40' : 'bg-slate-100 dark:bg-slate-800'

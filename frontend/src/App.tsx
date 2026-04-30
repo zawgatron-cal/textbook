@@ -6,9 +6,17 @@ export default function App() {
   const [showControls, setShowControls] = useState(false)
   const [layout, setLayout] = useState<LayoutNode>(createLeaf)
   const [panelFiles, setPanelFiles] = useState<Record<string, File | null>>({})
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef  = useRef<HTMLInputElement>(null)
   const activeLeafRef = useRef<string | null>(null)
-  const nearTopRef = useRef(false)
+  const nearTopRef    = useRef(false)
+  // View states stored in a ref — mutations never trigger re-renders, but the
+  // current snapshot is read during renders caused by layout changes, so
+  // surviving panels always receive their last known pan/zoom on remount.
+  const viewStatesRef = useRef<Record<string, { pan: { x: number; y: number }; zoom: number }>>({})
+
+  const handleViewChange = (leafId: string, state: { pan: { x: number; y: number }; zoom: number }) => {
+    viewStatesRef.current[leafId] = state
+  }
 
   const handleSplit = (leafId: string, dir: 'h' | 'v', ratio: number) => {
     const { layout: next, newLeafId } = splitLayout(layout, leafId, dir, ratio)
@@ -109,8 +117,10 @@ export default function App() {
         node={layout}
         showControls={showControls}
         panelFiles={panelFiles}
+        viewStates={viewStatesRef.current}
         onOpenFile={handleOpenFile}
         onSetFile={handleSetFile}
+        onViewChange={handleViewChange}
         onSplit={handleSplit}
         onResize={handleResize}
         onMerge={handleMerge}

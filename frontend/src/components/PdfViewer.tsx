@@ -12,6 +12,13 @@ const PAGE_GAP      = 16
 const OVERSCAN_PX   = 7000   // pre-render ~5 pages ahead/behind
 const KEEP_ALIVE_PX = 14000  // keep pages mounted until ~10 pages away
 
+// How strongly panel size affects pan/zoom sensitivity.
+//   0  = panel size has no effect (always full speed)
+//   1  = fully proportional (half-screen panel = half speed)
+// 0.5 is a good middle ground — smaller panels feel noticeably calmer
+//      without becoming frustratingly sluggish.
+const PANEL_SENSITIVITY_INFLUENCE = 0.6
+
 // requestIdleCallback polyfill (Safari < 16)
 const rIC: (cb: IdleRequestCallback, opts?: IdleRequestOptions) => number =
   typeof requestIdleCallback !== 'undefined'
@@ -25,13 +32,17 @@ const cIC: (id: number) => void =
 
 interface PageSize      { width: number; height: number }
 interface VisibleRange  { first: number; last: number }
+interface ViewState { pan: { x: number; y: number }; zoom: number }
+
 interface PdfViewerProps {
   file: File | null
   showControls: boolean
   onOpenFile: () => void
+  initialViewState?: ViewState
+  onViewChange?: (state: ViewState) => void
 }
 
-export default function PdfViewer({ file, showControls, onOpenFile }: PdfViewerProps) {
+export default function PdfViewer({ file, showControls, onOpenFile, initialViewState, onViewChange }: PdfViewerProps) {
 
   // ── React state ────────────────────────────────────────────────────────────
   const [numPages,      setNumPages]      = useState(0)
@@ -54,6 +65,11 @@ export default function PdfViewer({ file, showControls, onOpenFile }: PdfViewerP
 
   const pageRafRef = useRef<number | null>(null)
   const zoomRafRef = useRef<number | null>(null)
+
+  // Kept in refs so they never widen applyTransform's dependency array
+  const onViewChangeRef     = useRef(onViewChange)
+  const initialViewStateRef = useRef(initialViewState)
+  useEffect(() => { onViewChangeRef.current = onViewChange }, [onViewChange])
 
   // ── Custom render pipeline ────────────────────────────────────────────────
   // Pages are drawn to <canvas> elements via requestIdleCallback so that
@@ -182,6 +198,7 @@ export default function PdfViewer({ file, showControls, onOpenFile }: PdfViewerP
       contentRef.current.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
     }
     transformRef.current = { pan, zoom }
+    onViewChangeRef.current?.({ pan, zoom })
 
     // Expand range for new pages, shrink only past keep-alive boundary
     const desired   = computeRange(pan, zoom, OVERSCAN_PX)
@@ -211,24 +228,36 @@ export default function PdfViewer({ file, showControls, onOpenFile }: PdfViewerP
     const vp = viewportRef.current
     if (!vp) return
 
+    // Sensitivity scale: blends between 1.0 (full speed) and the panel's fractional
+    // size. PANEL_SENSITIVITY_INFLUENCE controls the blend — 0 = no effect, 1 = fully
+    // proportional. Recomputed each event so it adapts to live panel resizes.
+    const sensitivity = () => {
+      const panelFraction = Math.min(vp.clientWidth / window.innerWidth, vp.clientHeight / window.innerHeight)
+      return 1 - PANEL_SENSITIVITY_INFLUENCE * (1 - panelFraction)
+    }
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const { pan, zoom } = transformRef.current
+      const s = sensitivity()
       if (e.ctrlKey || e.metaKey) {
         const r  = vp.getBoundingClientRect()
         const cx = e.clientX - r.left, cy = e.clientY - r.top
-        const nz = Math.max(0.05, Math.min(5, zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)))
+        // Zoom step shrinks with panel size: full-screen = 8%, quarter-screen ≈ 4%
+        const step = 1 + 0.08 * s
+        const nz = Math.max(0.05, Math.min(5, zoom * (e.deltaY < 0 ? step : 1 / step)))
         applyTransform({ x: cx - (cx - pan.x) * (nz / zoom), y: cy - (cy - pan.y) * (nz / zoom) }, nz)
       } else {
-        applyTransform({ x: pan.x - e.deltaX, y: pan.y - e.deltaY }, zoom)
+        applyTransform({ x: pan.x - e.deltaX * s, y: pan.y - e.deltaY * s }, zoom)
       }
     }
 
     const onMouseMove = (e: MouseEvent) => {
       if (!dragRef.current.active) return
+      const s = sensitivity()
       applyTransform(
-        { x: dragRef.current.panX + e.clientX - dragRef.current.startX,
-          y: dragRef.current.panY + e.clientY - dragRef.current.startY },
+        { x: dragRef.current.panX + (e.clientX - dragRef.current.startX) * s,
+          y: dragRef.current.panY + (e.clientY - dragRef.current.startY) * s },
         transformRef.current.zoom,
       )
     }
@@ -307,9 +336,19 @@ export default function PdfViewer({ file, showControls, onOpenFile }: PdfViewerP
 
       const vp = viewportRef.current
       if (!vp || !sizes[0]) return
-      const nz = Math.min(1.0, (vp.clientWidth - 64) / sizes[0].width)
-      applyTransform({ x: (vp.clientWidth - sizes[0].width * nz) / 2, y: 24 }, nz)
-      setDisplayZoom(nz)
+
+      // If we have a saved view state (e.g. panel survived a merge), restore it.
+      // Consume it once so subsequent file changes use fit-to-width.
+      const saved = initialViewStateRef.current
+      initialViewStateRef.current = undefined
+      if (saved) {
+        applyTransform(saved.pan, saved.zoom)
+        setDisplayZoom(saved.zoom)
+      } else {
+        const nz = Math.min(1.0, (vp.clientWidth - 64) / sizes[0].width)
+        applyTransform({ x: (vp.clientWidth - sizes[0].width * nz) / 2, y: 24 }, nz)
+        setDisplayZoom(nz)
+      }
     }
 
     load().catch(console.error)

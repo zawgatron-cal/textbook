@@ -6,11 +6,15 @@ export type { LayoutNode }
 
 // ─── Shared props ────────────────────────────────────────────────────────────
 
+interface ViewState { pan: { x: number; y: number }; zoom: number }
+
 interface SharedProps {
   showControls: boolean
   panelFiles: Record<string, File | null>
-  onOpenFile: (leafId: string) => void   // triggers file input for this panel
-  onSetFile:  (leafId: string, file: File) => void  // direct set (drag-drop)
+  viewStates: Record<string, ViewState>
+  onOpenFile:    (leafId: string) => void
+  onSetFile:     (leafId: string, file: File) => void
+  onViewChange:  (leafId: string, state: ViewState) => void
   onSplit:  (leafId: string, dir: 'h' | 'v', ratio: number) => void
   onResize: (splitId: string, ratio: number) => void
   onMerge:  (leafId: string) => void
@@ -102,7 +106,7 @@ type DragPreview =
   | { mode: 'split'; dir: 'h' | 'v'; ratio: number }
   | { mode: 'merge' }
 
-function PanelLeaf({ panelId, showControls, panelFiles, onOpenFile, onSetFile, onSplit, onMerge }: SharedProps & { panelId: string }) {
+function PanelLeaf({ panelId, showControls, panelFiles, viewStates, onOpenFile, onSetFile, onViewChange, onSplit, onMerge }: SharedProps & { panelId: string }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [preview, setPreview] = useState<DragPreview | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -164,11 +168,13 @@ function PanelLeaf({ panelId, showControls, panelFiles, onOpenFile, onSetFile, o
       onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
     >
-      {file
+      {      file
         ? <PdfViewer
             file={file}
             showControls={showControls}
             onOpenFile={() => onOpenFile(panelId)}
+            initialViewState={viewStates[panelId]}
+            onViewChange={(state) => onViewChange(panelId, state)}
           />
         : <PanelDropZone
             isDragOver={isDragOver}

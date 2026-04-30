@@ -49,13 +49,16 @@ export function collectLeafIds(node: LayoutNode): string[] {
   return [...collectLeafIds(node.a), ...collectLeafIds(node.b)]
 }
 
-export function mergeLayout(root: LayoutNode, keepLeafId: string): LayoutNode {
+/**
+ * Collapses collapseLeafId and keeps its sibling (the survivor).
+ */
+export function mergeLayout(root: LayoutNode, collapseLeafId: string): LayoutNode {
   if (root.type === 'leaf') return root
-  if (root.a.type === 'leaf' && root.a.id === keepLeafId) return root.a
-  if (root.b.type === 'leaf' && root.b.id === keepLeafId) return root.b
-  const a = mergeLayout(root.a, keepLeafId)
+  if (root.a.type === 'leaf' && root.a.id === collapseLeafId) return root.b
+  if (root.b.type === 'leaf' && root.b.id === collapseLeafId) return root.a
+  const a = mergeLayout(root.a, collapseLeafId)
   if (a !== root.a) return { ...root, a }
-  const b = mergeLayout(root.b, keepLeafId)
+  const b = mergeLayout(root.b, collapseLeafId)
   if (b !== root.b) return { ...root, b }
   return root
 }

@@ -10,16 +10,18 @@ interface ViewState { pan: { x: number; y: number }; zoom: number }
 
 interface SharedProps {
   showControls: boolean
-  isLocked: boolean
+  syncEnabled: boolean          // S — continuous scroll sync across same-PDF panels
+  lockedPanels: Record<string, boolean>  // L — per-panel: ignores incoming sync
   panelFiles: Record<string, File | null>
   viewStates: Record<string, ViewState>
-  onOpenFile:       (leafId: string) => void
-  onSetFile:        (leafId: string, file: File) => void
-  onViewChange:     (leafId: string, state: ViewState) => void
-  onRegisterPanel:  (leafId: string, handle: PdfViewerHandle) => void
-  onUnregisterPanel:(leafId: string) => void
-  onPanelHover:     (leafId: string | null) => void
-  onToggleLock:     () => void
+  onOpenFile:          (leafId: string) => void
+  onSetFile:           (leafId: string, file: File) => void
+  onViewChange:        (leafId: string, state: ViewState) => void
+  onRegisterPanel:     (leafId: string, handle: PdfViewerHandle) => void
+  onUnregisterPanel:   (leafId: string) => void
+  onPanelHover:        (leafId: string | null) => void
+  onToggleSync:        () => void          // global
+  onTogglePanelLock:   (leafId: string) => void  // per-panel
   onSplit:  (leafId: string, dir: 'h' | 'v', ratio: number) => void
   onResize: (splitId: string, ratio: number) => void
   onMerge:  (leafId: string) => void
@@ -112,11 +114,13 @@ type DragPreview =
   | { mode: 'merge' }
 
 function PanelLeaf({
-  panelId, showControls, isLocked, panelFiles, viewStates,
+  panelId, showControls, syncEnabled, lockedPanels, panelFiles, viewStates,
   onOpenFile, onSetFile, onViewChange,
-  onRegisterPanel, onUnregisterPanel, onPanelHover, onToggleLock,
+  onRegisterPanel, onUnregisterPanel, onPanelHover,
+  onToggleSync, onTogglePanelLock,
   onSplit, onMerge,
 }: SharedProps & { panelId: string }) {
+  const isLocked = lockedPanels[panelId] ?? false
   const panelRef  = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<PdfViewerHandle>(null)
   const [preview, setPreview] = useState<DragPreview | null>(null)
@@ -194,8 +198,10 @@ function PanelLeaf({
             file={file}
             showControls={showControls}
             isLocked={isLocked}
+            syncEnabled={syncEnabled}
             onOpenFile={() => onOpenFile(panelId)}
-            onToggleLock={onToggleLock}
+            onToggleLock={() => onTogglePanelLock(panelId)}
+            onToggleSync={onToggleSync}
             initialViewState={viewStates[panelId]}
             onViewChange={(state) => onViewChange(panelId, state)}
           />

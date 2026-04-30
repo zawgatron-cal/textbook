@@ -19,9 +19,15 @@ export default function App() {
   const panelFilesRef    = useRef(panelFiles)
   useEffect(() => { panelFilesRef.current = panelFiles }, [panelFiles])
 
-  const [isLocked, setIsLocked] = useState(false)
-  const lockedRef       = useRef(false)
+  // S key: toggle continuous scroll sync across same-PDF panels
+  const [syncEnabled, setSyncEnabled] = useState(false)
+  const syncEnabledRef  = useRef(false)
   const propagatingRef  = useRef(false)  // prevents A→B→A feedback loops
+
+  // L key: per-panel lock — this panel ignores incoming sync but can still pan/zoom freely
+  const [lockedPanels, setLockedPanels] = useState<Record<string, boolean>>({})
+  const lockedPanelsRef = useRef<Record<string, boolean>>({})
+  useEffect(() => { lockedPanelsRef.current = lockedPanels }, [lockedPanels])
 
   const isSameFile = (a: File, b: File) =>
     a.name === b.name && a.size === b.size && a.lastModified === b.lastModified
@@ -34,49 +40,48 @@ export default function App() {
       .map(([id]) => id)
   }
 
-  const handleRegisterPanel  = (leafId: string, handle: PdfViewerHandle) => { panelHandlesRef.current[leafId] = handle }
+  const handleRegisterPanel   = (leafId: string, handle: PdfViewerHandle) => { panelHandlesRef.current[leafId] = handle }
   const handleUnregisterPanel = (leafId: string) => { delete panelHandlesRef.current[leafId] }
-  const handlePanelHover     = (leafId: string | null) => { activePanelRef.current = leafId }
+  const handlePanelHover      = (leafId: string | null) => { activePanelRef.current = leafId }
 
-  const handleToggleLock = () => {
-    const next = !lockedRef.current
-    lockedRef.current = next
-    setIsLocked(next)
+  const handleToggleSync = () => {
+    const next = !syncEnabledRef.current
+    syncEnabledRef.current = next
+    setSyncEnabled(next)
+  }
+
+  const handleTogglePanelLock = (leafId: string) => {
+    setLockedPanels(prev => ({ ...prev, [leafId]: !prev[leafId] }))
   }
 
   const handleViewChange = (leafId: string, state: { pan: { x: number; y: number }; zoom: number }) => {
     viewStatesRef.current[leafId] = state
-    // Lock: mirror to same-PDF peers, but skip if we're already propagating
-    // to prevent the A→B→A feedback loop that causes lag
-    if (lockedRef.current && !propagatingRef.current) {
+    // Sync: mirror to same-PDF peers (skip locked panels and the source), guard against loops
+    if (syncEnabledRef.current && !propagatingRef.current && !lockedPanelsRef.current[leafId]) {
       propagatingRef.current = true
       for (const peerId of getSamePdfPeers(leafId)) {
-        panelHandlesRef.current[peerId]?.applyViewState(state)
+        if (!lockedPanelsRef.current[peerId]) {
+          panelHandlesRef.current[peerId]?.applyViewState(state)
+        }
       }
       propagatingRef.current = false
     }
   }
 
-  // S key: one-time sync  |  L key: toggle lock
+  // S key: toggle continuous sync  |  L key: toggle per-panel lock
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return
       if (e.key === 's' || e.key === 'S') {
-        const active = activePanelRef.current
-        if (!active) return
-        const state = viewStatesRef.current[active]
-        if (!state) return
-        for (const peerId of getSamePdfPeers(active)) {
-          panelHandlesRef.current[peerId]?.applyViewState(state)
-        }
+        handleToggleSync()
       } else if (e.key === 'l' || e.key === 'L') {
-        handleToggleLock()
+        const active = activePanelRef.current
+        if (active) handleTogglePanelLock(active)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // intentionally empty — uses refs for current values
 
   const handleSplit = (leafId: string, dir: 'h' | 'v', ratio: number) => {
     const { layout: next, newLeafId } = splitLayout(layout, leafId, dir, ratio)
@@ -176,7 +181,8 @@ export default function App() {
       <PanelLayout
         node={layout}
         showControls={showControls}
-        isLocked={isLocked}
+        syncEnabled={syncEnabled}
+        lockedPanels={lockedPanels}
         panelFiles={panelFiles}
         viewStates={viewStatesRef.current}
         onOpenFile={handleOpenFile}
@@ -185,7 +191,8 @@ export default function App() {
         onRegisterPanel={handleRegisterPanel}
         onUnregisterPanel={handleUnregisterPanel}
         onPanelHover={handlePanelHover}
-        onToggleLock={handleToggleLock}
+        onToggleSync={handleToggleSync}
+        onTogglePanelLock={handleTogglePanelLock}
         onSplit={handleSplit}
         onResize={handleResize}
         onMerge={handleMerge}

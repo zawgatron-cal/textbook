@@ -41,15 +41,17 @@ export interface PdfViewerHandle {
 interface PdfViewerProps {
   file: File | null
   showControls: boolean
-  isLocked?: boolean
+  isLocked?: boolean     // this panel ignores incoming sync
+  syncEnabled?: boolean  // continuous scroll sync is active globally
   onOpenFile: () => void
-  onToggleLock?: () => void
+  onToggleLock?: () => void   // toggle lock on this panel
+  onToggleSync?: () => void   // toggle global sync
   initialViewState?: ViewState
   onViewChange?: (state: ViewState) => void
 }
 
 const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
-  { file, showControls, isLocked, onOpenFile, onToggleLock, initialViewState, onViewChange },
+  { file, showControls, isLocked, syncEnabled, onOpenFile, onToggleLock, onToggleSync, initialViewState, onViewChange },
   ref,
 ) {
 
@@ -239,6 +241,44 @@ const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer
   useImperativeHandle(ref, () => ({
     applyViewState: (state: ViewState) => applyTransformRef.current?.(state.pan, state.zoom),
   }), [])
+
+  // ── Panel resize → proportional re-scale ─────────────────────────────────
+  // When the panel's width changes (dragging the split handle) scale the zoom
+  // and x-pan proportionally so the PDF fills the new width instead of clipping.
+
+  useEffect(() => {
+    const vp = viewportRef.current
+    if (!vp) return
+
+    let prevW = vp.clientWidth
+    let prevH = vp.clientHeight
+
+    const ro = new ResizeObserver((entries) => {
+      const { width: newW, height: newH } = entries[0].contentRect
+      const { pan, zoom } = transformRef.current
+      let nx = pan.x, ny = pan.y, nz = zoom
+
+      if (prevW && newW !== prevW) {
+        // Horizontal resize: scale zoom and x-pan so PDF fills new width at same ratio
+        const s = newW / prevW
+        nz = zoom * s
+        nx = pan.x * s
+      }
+
+      if (prevH && newH !== prevH) {
+        // Vertical resize: shift y-pan so the viewport centre stays on the same
+        // document position (avoids the visible page jumping up or down)
+        ny = ny + (newH - prevH) / 2
+      }
+
+      prevW = newW
+      prevH = newH
+      if (nx !== pan.x || ny !== pan.y || nz !== zoom) applyTransform({ x: nx, y: ny }, nz)
+    })
+
+    ro.observe(vp)
+    return () => ro.disconnect()
+  }, [applyTransform])
 
   // ── Native event listeners (zero React overhead on hot paths) ─────────────
 
@@ -452,24 +492,42 @@ const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer
           Replace
         </button>
 
-        {onToggleLock && (
+        {(onToggleSync || onToggleLock) && (
           <>
             <div className="w-px h-3 mx-0.5 shrink-0" style={{ background: 'rgba(255,255,255,0.12)' }} />
-            <button
-              onClick={onToggleLock}
-              title={isLocked ? 'Locked — L to unlock' : 'L to lock scroll sync'}
-              className="glass-pill-btn w-6 h-6 flex items-center justify-center shrink-0"
-              style={isLocked ? { background: 'rgba(255,255,255,0.18)', boxShadow: '0 0 8px rgba(255,255,255,0.15)' } : {}}
-            >
-              {isLocked
-                ? <svg className="w-3 h-3 text-white/80" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
-                  </svg>
-                : <svg className="w-3 h-3 text-white/35" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5a3 3 0 016 0v2.75a.75.75 0 001.5 0V5.5A4.5 4.5 0 0010 1z" />
-                  </svg>
-              }
-            </button>
+
+            {/* Sync toggle — S key, global */}
+            {onToggleSync && (
+              <button
+                onClick={onToggleSync}
+                title={syncEnabled ? 'Sync on — S to turn off' : 'S to enable scroll sync'}
+                className="glass-pill-btn w-6 h-6 flex items-center justify-center shrink-0"
+                style={syncEnabled ? { background: 'rgba(255,255,255,0.18)', boxShadow: '0 0 8px rgba(255,255,255,0.15)' } : {}}
+              >
+                <svg className={`w-3 h-3 ${syncEnabled ? 'text-white/80' : 'text-white/35'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+              </button>
+            )}
+
+            {/* Lock toggle — L key, per-panel: ignores incoming sync */}
+            {onToggleLock && (
+              <button
+                onClick={onToggleLock}
+                title={isLocked ? 'Locked (ignores sync) — L to unlock' : 'L to lock this panel'}
+                className="glass-pill-btn w-6 h-6 flex items-center justify-center shrink-0"
+                style={isLocked ? { background: 'rgba(255,255,255,0.18)', boxShadow: '0 0 8px rgba(255,255,255,0.15)' } : {}}
+              >
+                {isLocked
+                  ? <svg className="w-3 h-3 text-white/80" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                    </svg>
+                  : <svg className="w-3 h-3 text-white/35" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5a3 3 0 016 0v2.75a.75.75 0 001.5 0V5.5A4.5 4.5 0 0010 1z" />
+                    </svg>
+                }
+              </button>
+            )}
           </>
         )}
       </div>

@@ -25,9 +25,13 @@ const cIC: (id: number) => void =
 
 interface PageSize      { width: number; height: number }
 interface VisibleRange  { first: number; last: number }
-interface PdfViewerProps { file: File | null }
+interface PdfViewerProps {
+  file: File | null
+  showControls: boolean
+  onOpenFile: () => void
+}
 
-export default function PdfViewer({ file }: PdfViewerProps) {
+export default function PdfViewer({ file, showControls, onOpenFile }: PdfViewerProps) {
 
   // ── React state ────────────────────────────────────────────────────────────
   const [numPages,      setNumPages]      = useState(0)
@@ -337,43 +341,69 @@ export default function PdfViewer({ file }: PdfViewerProps) {
   const { first, last } = visibleRange
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative h-full">
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 select-none">
+      {/* Single combined floating pill — fades in when mouse nears top */}
+      <div
+        className="absolute top-4 left-1/2 -translate-x-1/2 z-20 glass-pill flex items-center gap-2 px-3.5 py-2 select-none whitespace-nowrap"
+        style={{ opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 0.35s ease' }}
+      >
+        {/* Identity */}
+        <svg className="w-3.5 h-3.5 text-white/35 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+        <span className="text-xs text-white/40 max-w-[180px] truncate">
+          {file ? file.name.replace(/\.pdf$/i, '') : '—'}
+        </span>
+
+        <div className="w-px h-3 mx-0.5 shrink-0" style={{ background: 'rgba(255,255,255,0.12)' }} />
+
+        {/* Page navigation */}
         <button onClick={() => jumpToPage(currentPage - 1)} disabled={currentPage <= 1 || isLoading}
-          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" aria-label="Previous page">
-          <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          className="glass-pill-btn w-6 h-6 flex items-center justify-center shrink-0" aria-label="Previous page">
+          <svg className="w-3 h-3 text-white/55" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
           </svg>
         </button>
-        <div className="flex items-center gap-1.5">
+
+        <div className="flex items-center gap-1">
           <input type="number" min={1} max={numPages} value={currentPage} disabled={isLoading}
             onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) jumpToPage(v) }}
-            className="w-14 text-center text-sm border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-40" />
-          <span className="text-sm text-slate-400">/ {numPages || '—'}</span>
+            className="glass-input w-9 text-center text-xs px-1 py-0.5 tabular-nums" />
+          <span className="text-xs text-white/22 tabular-nums">/ {numPages || '—'}</span>
         </div>
+
         <button onClick={() => jumpToPage(currentPage + 1)} disabled={currentPage >= numPages || isLoading}
-          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" aria-label="Next page">
-          <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          className="glass-pill-btn w-6 h-6 flex items-center justify-center shrink-0" aria-label="Next page">
+          <svg className="w-3 h-3 text-white/55" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
-        <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
-        <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums w-10">{Math.round(displayZoom * 100)}%</span>
-        <button onClick={fitToWidth} disabled={isLoading}
-          className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors">
+
+        <div className="w-px h-3 mx-0.5 shrink-0" style={{ background: 'rgba(255,255,255,0.12)' }} />
+
+        {/* Zoom */}
+        <span className="text-xs text-white/28 tabular-nums w-8 text-center">{Math.round(displayZoom * 100)}%</span>
+        <button onClick={fitToWidth} disabled={isLoading} className="glass-pill-btn px-2.5 py-0.5 text-xs text-white/50">
           Fit
+        </button>
+
+        <div className="w-px h-3 mx-0.5 shrink-0" style={{ background: 'rgba(255,255,255,0.12)' }} />
+
+        {/* Open / Replace */}
+        <button onClick={onOpenFile} className="glass-pill-btn px-2.5 py-0.5 text-xs text-white/50">
+          Replace
         </button>
       </div>
 
       {/* Viewport */}
       <div ref={viewportRef}
-        className={`relative flex-1 overflow-hidden bg-slate-300 dark:bg-slate-950 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`absolute inset-0 overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        style={{ background: '#0a0a0a' }}
         onMouseDown={onMouseDown}>
 
         {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 pointer-events-none z-10">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/40 pointer-events-none z-10">
             <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -398,8 +428,8 @@ export default function PdfViewer({ file }: PdfViewerProps) {
                     left: (maxPageWidth - size.width) / 2,
                     width: size.width, height: size.height,
                     backgroundColor: 'white',
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.22)',
-                    borderRadius: 2, overflow: 'hidden',
+                    borderRadius: 4, overflow: 'hidden',
+                    boxShadow: '0 0 0 0.5px rgba(255,255,255,0.06), 0 4px 20px rgba(0,0,0,0.5), 0 24px 64px rgba(0,0,0,0.7)',
                   }}>
                     {/*
                       Canvas ref callback drives the entire render lifecycle:

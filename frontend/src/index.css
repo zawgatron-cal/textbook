@@ -1,34 +1,60 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background: #0a0a0a;
 }
 
 #root {
   height: 100vh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
-/* react-pdf canvas centering */
-.react-pdf__Page {
-  display: flex !important;
-  justify-content: center;
+/* Liquid glass — dark enough to read on white PDF pages */
+.glass-pill {
+  background: rgba(12, 12, 12, 0.72);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.5) inset,
+    0 8px 32px rgba(0, 0, 0, 0.6);
+  border-radius: 999px;
 }
 
-.react-pdf__Page__canvas {
-  max-width: 100%;
-  height: auto !important;
+.glass-pill-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset;
+  border-radius: 999px;
+  transition: background 0.12s ease;
 }
 
-.react-pdf__Page__textContent {
-  display: none;
+.glass-pill-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.glass-pill-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.80);
+  outline: none;
+}
+
+.glass-input:focus {
+  border-color: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.10);
 }

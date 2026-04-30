@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
 
@@ -34,15 +34,24 @@ interface PageSize      { width: number; height: number }
 interface VisibleRange  { first: number; last: number }
 interface ViewState { pan: { x: number; y: number }; zoom: number }
 
+export interface PdfViewerHandle {
+  applyViewState: (state: ViewState) => void
+}
+
 interface PdfViewerProps {
   file: File | null
   showControls: boolean
+  isLocked?: boolean
   onOpenFile: () => void
+  onToggleLock?: () => void
   initialViewState?: ViewState
   onViewChange?: (state: ViewState) => void
 }
 
-export default function PdfViewer({ file, showControls, onOpenFile, initialViewState, onViewChange }: PdfViewerProps) {
+const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
+  { file, showControls, isLocked, onOpenFile, onToggleLock, initialViewState, onViewChange },
+  ref,
+) {
 
   // ── React state ────────────────────────────────────────────────────────────
   const [numPages,      setNumPages]      = useState(0)
@@ -70,6 +79,9 @@ export default function PdfViewer({ file, showControls, onOpenFile, initialViewS
   const onViewChangeRef     = useRef(onViewChange)
   const initialViewStateRef = useRef(initialViewState)
   useEffect(() => { onViewChangeRef.current = onViewChange }, [onViewChange])
+
+  // Stable ref so useImperativeHandle can expose a handle with empty deps
+  const applyTransformRef = useRef<((pan: { x: number; y: number }, zoom: number) => void) | null>(null)
 
   // ── Custom render pipeline ────────────────────────────────────────────────
   // Pages are drawn to <canvas> elements via requestIdleCallback so that
@@ -221,6 +233,12 @@ export default function PdfViewer({ file, showControls, onOpenFile, initialViewS
         pageRafRef.current = null
       })
   }, [computeRange, computeCurrentPage])
+
+  // Keep ref current and expose a stable handle (empty deps = never recreated)
+  useEffect(() => { applyTransformRef.current = applyTransform }, [applyTransform])
+  useImperativeHandle(ref, () => ({
+    applyViewState: (state: ViewState) => applyTransformRef.current?.(state.pan, state.zoom),
+  }), [])
 
   // ── Native event listeners (zero React overhead on hot paths) ─────────────
 
@@ -433,6 +451,27 @@ export default function PdfViewer({ file, showControls, onOpenFile, initialViewS
         <button onClick={onOpenFile} className="glass-pill-btn px-2.5 py-0.5 text-xs text-white/50">
           Replace
         </button>
+
+        {onToggleLock && (
+          <>
+            <div className="w-px h-3 mx-0.5 shrink-0" style={{ background: 'rgba(255,255,255,0.12)' }} />
+            <button
+              onClick={onToggleLock}
+              title={isLocked ? 'Locked — L to unlock' : 'L to lock scroll sync'}
+              className="glass-pill-btn w-6 h-6 flex items-center justify-center shrink-0"
+              style={isLocked ? { background: 'rgba(255,255,255,0.18)', boxShadow: '0 0 8px rgba(255,255,255,0.15)' } : {}}
+            >
+              {isLocked
+                ? <svg className="w-3 h-3 text-white/80" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                  </svg>
+                : <svg className="w-3 h-3 text-white/35" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5a3 3 0 016 0v2.75a.75.75 0 001.5 0V5.5A4.5 4.5 0 0010 1z" />
+                  </svg>
+              }
+            </button>
+          </>
+        )}
       </div>
 
       {/* Viewport */}
@@ -490,4 +529,6 @@ export default function PdfViewer({ file, showControls, onOpenFile, initialViewS
       </div>
     </div>
   )
-}
+})
+
+export default PdfViewer

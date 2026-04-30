@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { PanelLayout } from './components/PanelLayout'
 import { createLeaf, splitLayout, resizeLayout, mergeLayout, collectLeafIds, type LayoutNode } from './components/layoutUtils'
+import type { PdfViewerHandle } from './components/PdfViewer'
 
 export default function App() {
   const [showControls, setShowControls] = useState(false)
@@ -12,11 +13,70 @@ export default function App() {
   // View states stored in a ref — mutations never trigger re-renders, but the
   // current snapshot is read during renders caused by layout changes, so
   // surviving panels always receive their last known pan/zoom on remount.
-  const viewStatesRef = useRef<Record<string, { pan: { x: number; y: number }; zoom: number }>>({})
+  const viewStatesRef    = useRef<Record<string, { pan: { x: number; y: number }; zoom: number }>>({})
+  const panelHandlesRef  = useRef<Record<string, PdfViewerHandle>>({})
+  const activePanelRef   = useRef<string | null>(null)
+  const panelFilesRef    = useRef(panelFiles)
+  useEffect(() => { panelFilesRef.current = panelFiles }, [panelFiles])
+
+  const [isLocked, setIsLocked] = useState(false)
+  const lockedRef       = useRef(false)
+  const propagatingRef  = useRef(false)  // prevents A→B→A feedback loops
+
+  const isSameFile = (a: File, b: File) =>
+    a.name === b.name && a.size === b.size && a.lastModified === b.lastModified
+
+  const getSamePdfPeers = (leafId: string): string[] => {
+    const myFile = panelFilesRef.current[leafId]
+    if (!myFile) return []
+    return Object.entries(panelFilesRef.current)
+      .filter(([id, f]) => id !== leafId && f && isSameFile(f, myFile))
+      .map(([id]) => id)
+  }
+
+  const handleRegisterPanel  = (leafId: string, handle: PdfViewerHandle) => { panelHandlesRef.current[leafId] = handle }
+  const handleUnregisterPanel = (leafId: string) => { delete panelHandlesRef.current[leafId] }
+  const handlePanelHover     = (leafId: string | null) => { activePanelRef.current = leafId }
+
+  const handleToggleLock = () => {
+    const next = !lockedRef.current
+    lockedRef.current = next
+    setIsLocked(next)
+  }
 
   const handleViewChange = (leafId: string, state: { pan: { x: number; y: number }; zoom: number }) => {
     viewStatesRef.current[leafId] = state
+    // Lock: mirror to same-PDF peers, but skip if we're already propagating
+    // to prevent the A→B→A feedback loop that causes lag
+    if (lockedRef.current && !propagatingRef.current) {
+      propagatingRef.current = true
+      for (const peerId of getSamePdfPeers(leafId)) {
+        panelHandlesRef.current[peerId]?.applyViewState(state)
+      }
+      propagatingRef.current = false
+    }
   }
+
+  // S key: one-time sync  |  L key: toggle lock
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).tagName === 'INPUT') return
+      if (e.key === 's' || e.key === 'S') {
+        const active = activePanelRef.current
+        if (!active) return
+        const state = viewStatesRef.current[active]
+        if (!state) return
+        for (const peerId of getSamePdfPeers(active)) {
+          panelHandlesRef.current[peerId]?.applyViewState(state)
+        }
+      } else if (e.key === 'l' || e.key === 'L') {
+        handleToggleLock()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSplit = (leafId: string, dir: 'h' | 'v', ratio: number) => {
     const { layout: next, newLeafId } = splitLayout(layout, leafId, dir, ratio)
@@ -116,11 +176,16 @@ export default function App() {
       <PanelLayout
         node={layout}
         showControls={showControls}
+        isLocked={isLocked}
         panelFiles={panelFiles}
         viewStates={viewStatesRef.current}
         onOpenFile={handleOpenFile}
         onSetFile={handleSetFile}
         onViewChange={handleViewChange}
+        onRegisterPanel={handleRegisterPanel}
+        onUnregisterPanel={handleUnregisterPanel}
+        onPanelHover={handlePanelHover}
+        onToggleLock={handleToggleLock}
         onSplit={handleSplit}
         onResize={handleResize}
         onMerge={handleMerge}

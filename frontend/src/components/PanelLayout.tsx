@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react'
-import PdfViewer from './PdfViewer'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import PdfViewer, { type PdfViewerHandle } from './PdfViewer'
 import type { LayoutNode } from './layoutUtils'
 
 export type { LayoutNode }
@@ -10,11 +10,16 @@ interface ViewState { pan: { x: number; y: number }; zoom: number }
 
 interface SharedProps {
   showControls: boolean
+  isLocked: boolean
   panelFiles: Record<string, File | null>
   viewStates: Record<string, ViewState>
-  onOpenFile:    (leafId: string) => void
-  onSetFile:     (leafId: string, file: File) => void
-  onViewChange:  (leafId: string, state: ViewState) => void
+  onOpenFile:       (leafId: string) => void
+  onSetFile:        (leafId: string, file: File) => void
+  onViewChange:     (leafId: string, state: ViewState) => void
+  onRegisterPanel:  (leafId: string, handle: PdfViewerHandle) => void
+  onUnregisterPanel:(leafId: string) => void
+  onPanelHover:     (leafId: string | null) => void
+  onToggleLock:     () => void
   onSplit:  (leafId: string, dir: 'h' | 'v', ratio: number) => void
   onResize: (splitId: string, ratio: number) => void
   onMerge:  (leafId: string) => void
@@ -106,12 +111,25 @@ type DragPreview =
   | { mode: 'split'; dir: 'h' | 'v'; ratio: number }
   | { mode: 'merge' }
 
-function PanelLeaf({ panelId, showControls, panelFiles, viewStates, onOpenFile, onSetFile, onViewChange, onSplit, onMerge }: SharedProps & { panelId: string }) {
-  const panelRef = useRef<HTMLDivElement>(null)
+function PanelLeaf({
+  panelId, showControls, isLocked, panelFiles, viewStates,
+  onOpenFile, onSetFile, onViewChange,
+  onRegisterPanel, onUnregisterPanel, onPanelHover, onToggleLock,
+  onSplit, onMerge,
+}: SharedProps & { panelId: string }) {
+  const panelRef  = useRef<HTMLDivElement>(null)
+  const viewerRef = useRef<PdfViewerHandle>(null)
   const [preview, setPreview] = useState<DragPreview | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
 
   const file = panelFiles[panelId] ?? null
+
+  // Register/unregister the PdfViewer handle with App so sync/lock can drive it
+  useEffect(() => {
+    if (viewerRef.current) onRegisterPanel(panelId, viewerRef.current)
+    return () => onUnregisterPanel(panelId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelId, file])
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const startCornerDrag = useCallback((e: React.MouseEvent, _c: Corner) => {
@@ -164,15 +182,20 @@ function PanelLeaf({ panelId, showControls, panelFiles, viewStates, onOpenFile, 
     <div
       ref={panelRef}
       className="relative w-full h-full"
+      onMouseEnter={() => onPanelHover(panelId)}
+      onMouseLeave={() => onPanelHover(null)}
       onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
     >
-      {      file
+      {file
         ? <PdfViewer
+            ref={viewerRef}
             file={file}
             showControls={showControls}
+            isLocked={isLocked}
             onOpenFile={() => onOpenFile(panelId)}
+            onToggleLock={onToggleLock}
             initialViewState={viewStates[panelId]}
             onViewChange={(state) => onViewChange(panelId, state)}
           />
